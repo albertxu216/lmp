@@ -8,10 +8,28 @@
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # -----------------------------------------------------------------------------------------
 # \brief
-#      net_watcher 工具 CMakeLists 文件
+#      ipc_watcher 工具 CMakeLists 文件
 # -----------------------------------------------------------------------------------------
-set(TOOL_NAME net_watcher)
-set(TOOL_BELONG_TO_MODULE net)
+set(TOOL_NAME ipcwatcher)
+set(TOOL_BELONG_TO_MODULE ipc)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(ARG_PARSE_DIR ${CMAKE_SOURCE_DIR}/third_party/argparse/include)
+set(FMT_DIR ${CMAKE_SOURCE_DIR}/third_party/fmt/include)
+set(SPDLOG_DIR ${CMAKE_SOURCE_DIR}/third_party/spdlog/include)
+if (NOT EXISTS ${ARG_PARSE_DIR} OR NOT EXISTS ${FMT_DIR} OR NOT EXISTS ${SPDLOG_DIR})
+    message(FATAL_ERROR "third party include directory does not exist.")
+endif ()
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${ARG_PARSE_DIR})  # cmd parser
+include_directories(${FMT_DIR}) # fmt
+include_directories(${SPDLOG_DIR})  # for log
+
+file(GLOB_RECURSE ${TOOL_NAME}_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
+
+find_package(Threads REQUIRED)
 
 file(GLOB apps ${CMAKE_CURRENT_SOURCE_DIR}/bpf/*.bpf.c)
 # 若不用Rust，则排除 profile.bpf.c
@@ -26,7 +44,7 @@ if (NOT EXISTS ${SRC_GEN_TARGET_DIR})
     message(STATUS "directory create success")
 endif ()
 
-# 遍历文件夹内所有的bpf.c
+# 遍历bpf文件夹内所有的bpf.c
 foreach(app ${apps})
     get_filename_component(app_stem ${app} NAME_WE)
     # Build object skeleton and depend skeleton on libbpf build
@@ -34,11 +52,9 @@ foreach(app ${apps})
     add_dependencies(${app_stem}_skel libbpf-build bpftool-build)
 endforeach()
 
-# add_executable(${TOOL_NAME} src/${TOOL_NAME}.c)
-add_executable(${TOOL_NAME} 
-    src/${TOOL_NAME}.c 
-    src/net_watcher_hepler.c 
-)
+
+add_executable(${TOOL_NAME} ${${TOOL_NAME}_SRCS})
+target_link_libraries(${TOOL_NAME} ${CMAKE_THREAD_LIBS_INIT} pcap)
 foreach (app ${apps})
     get_filename_component(app_stem ${app} NAME_WE)
     target_link_libraries(${TOOL_NAME} ${app_stem}_skel)
@@ -53,37 +69,8 @@ endforeach ()
 
 # 将可执行文件，配置文件等安装在对应的位置
 # 设置安装目录
-set(CPU_WATCHER_INSTALL_DIR backend/${TOOL_BELONG_TO_MODULE}/${TOOL_NAME})
-# 安装可执行文件到 ${CPU_WATCHER_INSTALL_DIR}/bin
+set(IPC_WATCHER_INSTALL_DIR backend/${TOOL_BELONG_TO_MODULE}/${TOOL_NAME})
+# 安装可执行文件到 ${IPC_WATCHER_INSTALL_DIR}/bin
 install(TARGETS ${TOOL_NAME}
-        RUNTIME DESTINATION ${CPU_WATCHER_INSTALL_DIR}/bin)
-# 安装配置文件到 ${CPU_WATCHER_INSTALL_DIR}/etc
-# 获取内核版本
-execute_process(
-    COMMAND uname -r
-    OUTPUT_VARIABLE VERSION_INFO
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# 使用'-'分隔版本
-string(REPLACE "-" ";" VERSION_PARTS ${VERSION_INFO})
-list(GET VERSION_PARTS 0 VERSION_BASE)
-
-# 从VERSION_BASE中提取主、次和补丁版本
-string(REPLACE "." ";" VERSION_NUMBERS ${VERSION_BASE})
-list(GET VERSION_NUMBERS 0 VERSION_MAJOR)
-list(GET VERSION_NUMBERS 1 VERSION_MINOR)
-list(GET VERSION_NUMBERS 2 VERSION_PATCH)
-
-message(STATUS "Kernel Major: ${VERSION_MAJOR}, Minor: ${VERSION_MINOR}, Patch: ${VERSION_PATCH}")
-
-set(MIN_VERSION_MAJOR 6)
-set(MIN_VERSION_MINOR 4)
-
-if(MAJOR GREATER MIN_VERSION_MAJOR OR (MAJOR EQUAL MIN_VERSION_MAJOR AND MINOR GREATER_EQUAL MIN_VERSION_MINOR))
-    add_definitions(-DUSE_NEW_GET_USER_DATA)  
-else()
-    add_definitions(-DUSE_OLD_GET_USER_DATA)   
-endif()
-
-
+        RUNTIME DESTINATION ${IPC_WATCHER_INSTALL_DIR}/bin)
+# 安装配置文件到 ${IPC_WATCHER_INSTALL_DIR}/etc
